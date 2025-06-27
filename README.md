@@ -20,7 +20,7 @@ Created by **@eternaaall** 🧠
 ## 📦 Quick Start (1 Command Install)
 
 ```bash
-bash <(curl -s https://raw.githubusercontent.com/eternaall/verifycysic/main/verifcys_byetrnl)
+bash <(curl -s https://raw.githubusercontent.com/eternaaall/verifcysic/main/verifcys_byetrnl)
 ```
 
 You will be prompted to enter your EVM wallet address on the first run.
