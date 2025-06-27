@@ -2,7 +2,7 @@
 
 This repository provides a one-command installation and management script for running Cysic Verifier nodes on GPU servers.
 
-Created by **@eternaall** 🧠
+Created by **@eternaaall** 🧠
 
 ---
 
