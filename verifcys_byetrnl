@@ -1,0 +1,137 @@
+#!/bin/bash
+
+clear
+echo
+echo "╔══════════════════════════════════════╗"
+echo "║     🚀 Cysic Verifier                ║"
+echo "║     created by eternaaall           ║"
+echo "╚══════════════════════════════════════╝"
+echo
+
+WALLET_FILE="$HOME/.cysic_wallet"
+if [[ -f "$WALLET_FILE" ]]; then
+    WALLET=$(cat "$WALLET_FILE")
+    echo "🔑 Using saved wallet address: $WALLET"
+else
+    while true; do
+        read -p "Enter your EVM wallet address: " WALLET
+        if [[ "$WALLET" =~ ^0x[a-fA-F0-9]{40}$ ]]; then
+            echo "$WALLET" > "$WALLET_FILE"
+            break
+        else
+            echo "❌ Invalid ETH address format. Try again."
+        fi
+    done
+fi
+
+if [[ ! -f "$HOME/.cysic_apt_installed" ]]; then
+    echo "📦 Installing dependencies..."
+    sudo apt update
+    sudo apt install -y screen curl
+    touch "$HOME/.cysic_apt_installed"
+else
+    echo "📦 Dependencies already installed."
+fi
+
+if [[ ! -f /etc/systemd/system/cysic.service ]]; then
+    echo "⚙️ Creating systemd service file..."
+    sudo bash -c 'cat > /etc/systemd/system/cysic.service <<EOF
+[Unit]
+Description=Cysic Verifier Node
+After=network.target
+
+[Service]
+User=root
+Group=root
+WorkingDirectory=/root/cysic-verifier
+Environment="LD_LIBRARY_PATH=/root/cysic-verifier"
+Environment="CHAIN_ID=534352"
+ExecStart=/root/cysic-verifier/verifier
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF'
+fi
+
+if [[ ! -f /root/cysic-verifier/verifier ]]; then
+    echo "📅 Installing verifier..."
+    curl -L https://github.com/cysic-labs/cysic-phase3/releases/download/v1.0.0/setup_linux.sh -o ~/setup_linux.sh
+    if [[ -f ~/setup_linux.sh ]]; then
+        bash ~/setup_linux.sh "$WALLET"
+        echo "✅ Verifier installed."
+    else
+        echo "❌ Failed to download setup script."
+        exit 1
+    fi
+fi
+
+while true; do
+    echo
+    echo "=========== Cysic Verifier Menu ==========="
+    echo "1) View logs for a session"
+    echo "2) Start new verifier session"
+    echo "3) Update verifier"
+    echo "4) Stop all sessions and clean logs"
+    echo "5) Exit"
+    echo "==========================================="
+    read -p "Choose option: " OPTION
+    echo
+
+    case $OPTION in
+        1)
+            echo "Available sessions:"
+            screen -ls | grep cysic | awk '{split($1,a,"."); print a[2] " (" a[1] ")"}'
+            read -p "Enter session name (e.g. cysic, cysic1): " SESSION
+            LOG="/var/log/${SESSION}.log"
+            if [[ -f "$LOG" ]]; then
+                echo "📜 Showing logs for $SESSION:"
+                tail -f "$LOG"
+            else
+                echo "❌ Log not found: $LOG"
+            fi
+            ;;
+        2)
+            INDEX=0
+            while true; do
+                [[ $INDEX -eq 0 ]] && NAME="cysic" || NAME="cysic$INDEX"
+                screen -ls | grep -q "\.${NAME}" || break
+                ((INDEX++))
+            done
+            LOG="/var/log/${NAME}.log"
+            echo "🚀 Starting session: $NAME"
+            screen -dmS "$NAME" bash -c "cd /root/cysic-verifier && while true; do LD_LIBRARY_PATH=/root/cysic-verifier CHAIN_ID=534352 ./verifier; echo '[!] verifier exited, restarting in 5s...'; sleep 5; done >> $LOG 2>&1"
+            echo "📋 Logging to: $LOG"
+            ;;
+        3)
+            echo "🔚 Stopping all sessions..."
+            screen -ls | grep cysic | awk '{print $1}' | cut -d. -f1 | while read -r ID; do
+                screen -S "$ID" -X quit
+                echo "Stopped: $ID"
+            done
+            echo "🛃 Removing logs..."
+            rm -f /var/log/cysic*.log
+            echo "🔄 Updating verifier..."
+            curl -L https://github.com/cysic-labs/cysic-phase3/releases/download/v1.0.0/setup_linux.sh -o ~/setup_linux.sh
+            [[ -f ~/setup_linux.sh ]] && bash ~/setup_linux.sh "$WALLET" && echo "✅ Updated." || echo "❌ Download failed."
+            ;;
+        4)
+            echo "🔚 Stopping all sessions..."
+            screen -ls | grep cysic | awk '{print $1}' | cut -d. -f1 | while read -r ID; do
+                screen -S "$ID" -X quit
+                echo "Stopped: $ID"
+            done
+            echo "🛃 Removing logs..."
+            rm -f /var/log/cysic*.log
+            ;;
+        5)
+            echo "👋 Bye!"
+            exit 0
+            ;;
+        *)
+            echo "❌ Invalid option."
+            ;;
+    esac
+
+done
