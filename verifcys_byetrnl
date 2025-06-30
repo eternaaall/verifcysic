@@ -3,7 +3,7 @@
 clear
 echo
 echo "╔══════════════════════════════════════╗"
-echo "║     🚀 Cysic Verifier                ║"
+echo "║     🚀 Cysic Simple Verifier         ║"
 echo "║     created by eternaaall           ║"
 echo "╚══════════════════════════════════════╝"
 echo
@@ -70,9 +70,9 @@ fi
 while true; do
     echo
     echo "=========== Cysic Verifier Menu ==========="
-    echo "1) View logs for a session"
-    echo "2) Start new verifier session"
-    echo "3) Update verifier"
+    echo "1) View logs"
+    echo "2) Start new Verifier session"
+    echo "3) Update Verifier and clean logs"
     echo "4) Stop all sessions and clean logs"
     echo "5) Exit"
     echo "==========================================="
