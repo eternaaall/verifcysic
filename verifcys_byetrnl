@@ -74,7 +74,8 @@ while true; do
     echo "2) Start new Verifier session"
     echo "3) Update Verifier and clean logs"
     echo "4) Stop all sessions and clean logs"
-    echo "5) Exit"
+    echo "5) Full Reset + key"
+    echo "6) Exit"
     echo "==========================================="
     read -p "Choose option: " OPTION
     echo
@@ -126,6 +127,18 @@ while true; do
             rm -f /var/log/cysic*.log
             ;;
         5)
+            echo "🧨 Performing full reset..."
+            screen -ls | grep cysic | awk '{print $1}' | cut -d. -f1 | while read -r ID; do
+                screen -S "$ID" -X quit
+                echo "Stopped: $ID"
+            done
+            echo "🛃 Removing logs..."
+            rm -f /var/log/cysic*.log
+            echo "🗝 Deleting keys from /root/.cysic/keys/..."
+            rm -rf /root/.cysic/keys/
+            echo "🧼 Full reset complete."
+            ;;
+        6)
             echo "👋 Bye!"
             exit 0
             ;;
@@ -133,5 +146,4 @@ while true; do
             echo "❌ Invalid option."
             ;;
     esac
-
 done
