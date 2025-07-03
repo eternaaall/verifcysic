@@ -93,18 +93,21 @@ while true; do
                 echo "❌ Log not found: $LOG"
             fi
             ;;
-        2)
-            INDEX=0
-            while true; do
-                [[ $INDEX -eq 0 ]] && NAME="cysic" || NAME="cysic$INDEX"
-                screen -ls | grep -q "\.${NAME}" || break
-                ((INDEX++))
-            done
-            LOG="/var/log/${NAME}.log"
-            echo "🚀 Starting session: $NAME"
-            screen -dmS "$NAME" bash -c "cd /root/cysic-verifier && while true; do LD_LIBRARY_PATH=/root/cysic-verifier CHAIN_ID=534352 ./verifier; echo '[!] verifier exited, restarting in 5s...'; sleep 5; done >> $LOG 2>&1"
-            echo "📋 Logging to: $LOG"
-            ;;
+2)
+    INDEX=0
+    while true; do
+        [[ $INDEX -eq 0 ]] && NAME="cysic" || NAME="cysic$INDEX"
+        screen -ls | grep -q "\.${NAME}" || break
+        ((INDEX++))
+    done
+    LOG="/var/log/${NAME}.log"
+    echo "🚮 Cleaning old keys before starting..."
+    rm -rf /root/.cysic/keys/
+    echo "🚀 Starting session: $NAME"
+    screen -dmS "$NAME" bash -c "cd /root/cysic-verifier && while true; do LD_LIBRARY_PATH=/root/cysic-verifier CHAIN_ID=534352 ./verifier; echo '[!] verifier exited, restarting in 5s...'; sleep 5; done >> $LOG 2>&1"
+    echo "📋 Logging to: $LOG"
+    ;;
+
         3)
             echo "🔚 Stopping all sessions..."
             screen -ls | grep cysic | awk '{print $1}' | cut -d. -f1 | while read -r ID; do
