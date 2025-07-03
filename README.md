@@ -8,12 +8,13 @@ Created by **@eternaaall** 🧠
 
 ## 🔧 Features
 
-- One-line install
-- Interactive CLI menu
-- Multi-session management via `screen`
-- Per-session logs with tailing
-- Auto-restart on failure
-- Update + cleanup logic built-in
+- One-line install  
+- Interactive CLI menu  
+- Multi-session management via `screen`  
+- Per-session logs with tailing  
+- Auto-restart on failure  
+- Full reset option (sessions, logs, keys)  
+- Update + cleanup logic built-in  
 
 ---
 
@@ -31,19 +32,21 @@ You will be prompted to enter your EVM wallet address on the first run.
 
 When running, the script presents a menu:
 
-1. **View logs** of a specific screen session
-2. **Start a new verifier session** (each in its own `screen`)
-3. **Update verifier** (stops all, clears logs, reinstalls)
-4. **Stop all sessions** and remove logs
-5. **Exit** the manager
+1. **View logs** of a specific screen session  
+2. **Start a new verifier session** (each in its own `screen`)  
+3. **Update verifier** (stops all sessions, clears logs, reinstalls)  
+4. **Stop all sessions** and remove logs  
+5. **Exit** the manager  
+6. **Full reset** (stop all, remove logs, delete keys)  
 
 ---
 
 ## 📂 Log Storage
-- Logs are stored in `/var/log/cysic*.log`
-- Each session has its own file: `cysic.log`, `cysic1.log`, etc.
-- Logs auto-delete when sessions are stopped via menu
-- Sessions auto-restart on failure
+
+- Logs are stored in `/var/log/cysic*.log`  
+- Each session has its own file: `cysic.log`, `cysic1.log`, etc.  
+- Logs auto-delete when sessions are stopped via menu  
+- Sessions auto-restart on failure  
 
 ---
 
@@ -58,6 +61,7 @@ It automatically skips installation if already done.
 ---
 
 ## 🛡 License
+
 MIT — Free to use and modify.
 
 ---
