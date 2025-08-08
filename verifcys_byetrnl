@@ -67,7 +67,7 @@ if [[ ! -f /root/cysic-verifier/verifier ]]; then
     [[ -f ~/setup_linux.sh ]] && bash ~/setup_linux.sh "$WALLET"
 fi
 
-# Auto-increment helper
+# Get next session number (lowest available)
 get_next_session_number() {
     for (( i=0; ; i++ )); do
         NAME="${i}cysic"
@@ -82,8 +82,8 @@ while true; do
     echo "1) View status and logs"
     echo "2) Launch a new Verifier"
     echo "3) Update Verifier"
-    echo "4) Stop all sessions"
-    echo "5) Full Reset + key"
+    echo "4) Stop all Verifiers + Key Reset"
+    echo "5) Script Reset"
     echo "6) Exit"
     echo "==========================================="
     read -p "Choose option: " OPTION
@@ -91,10 +91,17 @@ while true; do
 
     case $OPTION in
         1)
-            echo "🖥 Available screen sessions:"
-            screen -ls | grep cysic | awk -F '.' '{print "[" $1 "] " $2}'
-            read -p "Enter session number to attach (e.g. 1): " NUM
-            screen -r "${NUM}cysic"
+            echo "🖥 Active sessions:"
+            for s in $(screen -ls | grep cysic | awk '{print $1}'); do
+                NAME=$(echo "$s" | cut -d. -f2)
+                LOG_FILE="/var/log/${NAME}.log"
+                WORKER=$(grep -a "your current worker address is:" "$LOG_FILE" 2>/dev/null | tail -1 | grep -oE '0x[a-fA-F0-9]{40}')
+                RESTARTS=$(grep -c "verifier exited" "$LOG_FILE" 2>/dev/null)
+                SESSION_NUM=$(echo "$NAME" | grep -oE '^[0-9]+')
+                echo "[${SESSION_NUM}] ${NAME} | ${WORKER:-no worker yet} | Restarts: ${RESTARTS}"
+            done
+            read -p "Enter session number to attach (e.g. 1 for 1cysic): " ID
+            screen -r "${ID}cysic"
             ;;
         2)
             read -p "Are you sure you want to launch a new Verifier? (y/n): " CONFIRM
@@ -104,10 +111,8 @@ while true; do
             NAME="${NEXT}cysic"
             LOG="/var/log/${NAME}.log"
 
-            echo "⚠️ Confirm deletion of existing keys (y/n)?"
-            read -r CONFIRM_KEY
-            [[ "$CONFIRM_KEY" != "y" ]] && echo "Cancelled key removal." && continue
-            rm -rf /root/.cysic/keys/
+            read -p "Delete existing keys before launch? (y/n): " CONFIRM_KEY
+            [[ "$CONFIRM_KEY" == "y" ]] && rm -rf /root/.cysic/keys/
 
             echo "🚀 Starting session: $NAME"
             screen -dmS "$NAME" bash -c "cd /root/cysic-verifier && while true; do LD_LIBRARY_PATH=/root/cysic-verifier CHAIN_ID=534352 ./verifier 2>&1 | tee -a $LOG; sleep 5; done"
@@ -116,28 +121,55 @@ while true; do
             read -p "Are you sure you want to update Verifier? (y/n): " CONFIRM
             [[ "$CONFIRM" != "y" ]] && echo "Cancelled." && continue
 
-            read -p "Delete existing keys? (y/n): " CONFIRM_KEYS
+            read -p "Delete keys before update? (y/n): " CONFIRM_KEYS
             [[ "$CONFIRM_KEYS" == "y" ]] && rm -rf /root/.cysic/keys/
 
-            echo "🔚 Stopping all sessions..."
             screen -ls | grep cysic | awk '{print $1}' | cut -d. -f1 | while read -r ID; do
                 screen -S "$ID" -X quit
             done
 
-            echo "🧹 Cleaning logs and verifier dir..."
             rm -f /var/log/*cysic.log
             rm -rf /root/cysic-verifier/
             rm -f /root/setup_linux.sh
 
-            echo "🔄 Re-installing..."
+            echo "🔄 Reinstalling verifier..."
             curl -L https://github.com/cysic-labs/cysic-phase3/releases/download/v1.0.0/setup_linux.sh -o ~/setup_linux.sh
             [[ -f ~/setup_linux.sh ]] && bash ~/setup_linux.sh "$WALLET"
             ;;
         4)
-            read -p "This will delete all script data and reset its settings. Continue? (y/n): " CONFIRM
+            echo "1) Stop all Verifiers"
+            echo "2) Reset key"
+            echo "3) Both"
+            read -p "Select an action (1-3): " ACTION
+            case "$ACTION" in
+                1)
+                    screen -ls | grep cysic | awk '{print $1}' | cut -d. -f1 | while read -r ID; do
+                        screen -S "$ID" -X quit
+                    done
+                    rm -f /var/log/*cysic.log
+                    echo "✅ All verifiers stopped and logs removed."
+                    ;;
+                2)
+                    rm -rf /root/.cysic/keys/
+                    echo "🗝 Key directory deleted."
+                    ;;
+                3)
+                    screen -ls | grep cysic | awk '{print $1}' | cut -d. -f1 | while read -r ID; do
+                        screen -S "$ID" -X quit
+                    done
+                    rm -f /var/log/*cysic.log
+                    rm -rf /root/.cysic/keys/
+                    echo "✅ Verifiers stopped, logs and keys removed."
+                    ;;
+                *)
+                    echo "❌ Invalid selection."
+                    ;;
+            esac
+            ;;
+        5)
+            read -p "⚠️ This will delete all script data and reset its settings. Continue? (y/n): " CONFIRM
             [[ "$CONFIRM" != "y" ]] && echo "Cancelled." && continue
 
-            echo "🧯 Stopping all sessions and wiping all data..."
             screen -ls | grep cysic | awk '{print $1}' | cut -d. -f1 | while read -r ID; do
                 screen -S "$ID" -X quit
             done
@@ -145,23 +177,13 @@ while true; do
             rm -f ~/.cysic_wallet
             rm -f ~/.cysic_apt_installed
             rm -f ~/.cysic_session_counter
-            rm -f /var/log/*cysic.log
             rm -rf /root/cysic-verifier/
             rm -f /root/setup_linux.sh
             rm -f /etc/systemd/system/cysic.service
-
-            echo "✅ Full wipe complete."
-            ;;
-        5)
-            read -p "This will also delete your keys. Continue? (y/n): " CONFIRM
-            [[ "$CONFIRM" != "y" ]] && echo "Cancelled." && continue
-
-            screen -ls | grep cysic | awk '{print $1}' | cut -d. -f1 | while read -r ID; do
-                screen -S "$ID" -X quit
-            done
             rm -f /var/log/*cysic.log
-            rm -rf /root/.cysic/keys/
-            echo "🧼 Full reset complete."
+
+            echo "🧨 Script reset complete."
+            exit 0
             ;;
         6)
             echo "👋 Bye!"
