@@ -9,6 +9,9 @@ echo "╚═══════════════════════�
 echo
 
 WALLET_FILE="$HOME/.cysic_wallet"
+SESSION_COUNTER_FILE="$HOME/.cysic_session_counter"
+
+# Load saved wallet or prompt
 if [[ -f "$WALLET_FILE" ]]; then
     WALLET=$(cat "$WALLET_FILE")
     echo "🔑 Using saved wallet address: $WALLET"
@@ -24,6 +27,7 @@ else
     done
 fi
 
+# Dependencies
 if [[ ! -f "$HOME/.cysic_apt_installed" ]]; then
     echo "📦 Installing dependencies..."
     sudo apt update
@@ -33,6 +37,7 @@ else
     echo "📦 Dependencies already installed."
 fi
 
+# Systemd
 if [[ ! -f /etc/systemd/system/cysic.service ]]; then
     echo "⚙️ Creating systemd service file..."
     sudo bash -c 'cat > /etc/systemd/system/cysic.service <<EOF
@@ -55,22 +60,22 @@ WantedBy=multi-user.target
 EOF'
 fi
 
+# Initial install
 if [[ ! -f /root/cysic-verifier/verifier ]]; then
     echo "📅 Installing verifier..."
     curl -L https://github.com/cysic-labs/cysic-phase3/releases/download/v1.0.0/setup_linux.sh -o ~/setup_linux.sh
-    if [[ -f ~/setup_linux.sh ]]; then
-        bash ~/setup_linux.sh "$WALLET"
-        echo "✅ Verifier installed."
-    else
-        echo "❌ Failed to download setup script."
-        exit 1
-    fi
+    [[ -f ~/setup_linux.sh ]] && bash ~/setup_linux.sh "$WALLET"
 fi
 
-# Create counter file for session numbering
-COUNTER_FILE="$HOME/.cysic_session_counter"
-[[ ! -f "$COUNTER_FILE" ]] && echo 0 > "$COUNTER_FILE"
+# Auto-increment helper
+get_next_session_number() {
+    for (( i=0; ; i++ )); do
+        NAME="${i}cysic"
+        screen -ls | grep -q "\.${NAME}" || { echo "$i"; return; }
+    done
+}
 
+# Menu loop
 while true; do
     echo
     echo "=========== Cysic Verifier Menu ==========="
@@ -86,72 +91,82 @@ while true; do
 
     case $OPTION in
         1)
-            echo "Available sessions:"
-            for s in $(screen -ls | grep cysic | awk '{print $1}'); do
-                NAME=$(echo "$s" | cut -d. -f2)
-                LOG_FILE="/var/log/${NAME}.log"
-                WORKER=$(grep -a "your current worker address is:" "$LOG_FILE" 2>/dev/null | tail -1 | grep -oE '0x[a-fA-F0-9]{40}')
-                RESTARTS=$(grep -c "verifier exited" "$LOG_FILE" 2>/dev/null)
-                echo "[${NAME}] ${WORKER:-no worker yet} | Restarts: ${RESTARTS}"
-            done
-            read -p "Enter session number to attach (e.g. 1 for 1cysic): " ID
-            screen -r "${ID}cysic"
+            echo "🖥 Available screen sessions:"
+            screen -ls | grep cysic | awk -F '.' '{print "[" $1 "] " $2}'
+            read -p "Enter session number to attach (e.g. 1): " NUM
+            screen -r "${NUM}cysic"
             ;;
-
         2)
-            read -p "Are you sure you want to launch a new session? (y/n): " CONFIRM
+            read -p "Are you sure you want to launch a new Verifier? (y/n): " CONFIRM
             [[ "$CONFIRM" != "y" ]] && echo "Cancelled." && continue
-            INDEX=$(cat "$COUNTER_FILE")
-            NAME="${INDEX}cysic"
-            echo $((INDEX + 1)) > "$COUNTER_FILE"
+
+            NEXT=$(get_next_session_number)
+            NAME="${NEXT}cysic"
             LOG="/var/log/${NAME}.log"
-            read -p "Do you want to delete the current key before launch? (y/n): " DELKEY
-            [[ "$DELKEY" == "y" ]] && echo "🗝 Deleting /root/.cysic/keys/..." && rm -rf /root/.cysic/keys/
-            echo "🚀 Starting session: $NAME"
-            screen -dmS "$NAME" bash -c "cd /root/cysic-verifier && while true; do LD_LIBRARY_PATH=/root/cysic-verifier CHAIN_ID=534352 ./verifier 2>&1 | tee -a '$LOG'; echo '[!] verifier exited, restarting in 5s...'; sleep 5; done"
-            ;;
 
-        3)
-            read -p "Are you sure you want to update the verifier? This will delete all sessions and keys. (y/n): " CONFIRM
-            [[ "$CONFIRM" != "y" ]] && echo "Cancelled." && continue
-            echo "🔚 Stopping all sessions..."
-            screen -ls | grep cysic | cut -d. -f1 | awk '{print $1}' | xargs -r kill
-            echo "🛃 Removing logs..."
-            rm -f /var/log/cysic*.log
-            echo "🗝 Deleting keys..."
+            echo "⚠️ Confirm deletion of existing keys (y/n)?"
+            read -r CONFIRM_KEY
+            [[ "$CONFIRM_KEY" != "y" ]] && echo "Cancelled key removal." && continue
             rm -rf /root/.cysic/keys/
-            echo "🔄 Updating verifier..."
+
+            echo "🚀 Starting session: $NAME"
+            screen -dmS "$NAME" bash -c "cd /root/cysic-verifier && while true; do LD_LIBRARY_PATH=/root/cysic-verifier CHAIN_ID=534352 ./verifier 2>&1 | tee -a $LOG; sleep 5; done"
+            ;;
+        3)
+            read -p "Are you sure you want to update Verifier? (y/n): " CONFIRM
+            [[ "$CONFIRM" != "y" ]] && echo "Cancelled." && continue
+
+            read -p "Delete existing keys? (y/n): " CONFIRM_KEYS
+            [[ "$CONFIRM_KEYS" == "y" ]] && rm -rf /root/.cysic/keys/
+
+            echo "🔚 Stopping all sessions..."
+            screen -ls | grep cysic | awk '{print $1}' | cut -d. -f1 | while read -r ID; do
+                screen -S "$ID" -X quit
+            done
+
+            echo "🧹 Cleaning logs and verifier dir..."
+            rm -f /var/log/*cysic.log
             rm -rf /root/cysic-verifier/
+            rm -f /root/setup_linux.sh
+
+            echo "🔄 Re-installing..."
             curl -L https://github.com/cysic-labs/cysic-phase3/releases/download/v1.0.0/setup_linux.sh -o ~/setup_linux.sh
-            bash ~/setup_linux.sh "$WALLET"
+            [[ -f ~/setup_linux.sh ]] && bash ~/setup_linux.sh "$WALLET"
             ;;
-
         4)
-            read -p "Are you sure you want to stop all sessions? (y/n): " CONFIRM
+            read -p "This will delete all script data and reset its settings. Continue? (y/n): " CONFIRM
             [[ "$CONFIRM" != "y" ]] && echo "Cancelled." && continue
-            echo "🔚 Stopping all sessions..."
-            screen -ls | grep cysic | cut -d. -f1 | awk '{print $1}' | xargs -r kill
-            echo "🛃 Removing logs..."
-            rm -f /var/log/cysic*.log
-            ;;
 
+            echo "🧯 Stopping all sessions and wiping all data..."
+            screen -ls | grep cysic | awk '{print $1}' | cut -d. -f1 | while read -r ID; do
+                screen -S "$ID" -X quit
+            done
+
+            rm -f ~/.cysic_wallet
+            rm -f ~/.cysic_apt_installed
+            rm -f ~/.cysic_session_counter
+            rm -f /var/log/*cysic.log
+            rm -rf /root/cysic-verifier/
+            rm -f /root/setup_linux.sh
+            rm -f /etc/systemd/system/cysic.service
+
+            echo "✅ Full wipe complete."
+            ;;
         5)
-            read -p "Are you sure you want to perform FULL reset (sessions, logs, keys)? (y/n): " CONFIRM
+            read -p "This will also delete your keys. Continue? (y/n): " CONFIRM
             [[ "$CONFIRM" != "y" ]] && echo "Cancelled." && continue
-            echo "🔚 Stopping all sessions..."
-            screen -ls | grep cysic | cut -d. -f1 | awk '{print $1}' | xargs -r kill
-            echo "🛃 Removing logs..."
-            rm -f /var/log/cysic*.log
-            echo "🗝 Deleting keys from /root/.cysic/keys/..."
+
+            screen -ls | grep cysic | awk '{print $1}' | cut -d. -f1 | while read -r ID; do
+                screen -S "$ID" -X quit
+            done
+            rm -f /var/log/*cysic.log
             rm -rf /root/.cysic/keys/
             echo "🧼 Full reset complete."
             ;;
-
         6)
             echo "👋 Bye!"
             exit 0
             ;;
-
         *)
             echo "❌ Invalid option."
             ;;
